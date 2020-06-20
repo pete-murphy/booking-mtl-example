@@ -1,5 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module DB
-  ( ConnectionString,
+  ( Config (..),
     readReservationsFromDB,
     getReservedSeatsFromDB,
     saveReservation,
@@ -10,6 +12,8 @@ module DB
 where
 
 import ApiModel
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Reader.Class (MonadReader (..), asks)
 import Data.List (find)
 import Data.Time
   ( FormatTime (..),
@@ -20,73 +24,77 @@ import Data.Time
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
-type ConnectionString = String
+data Config
+  = Config
+      { connStr :: String,
+        svcAddr :: String
+      }
 
 rawFileNameForDate :: FormatTime t => t -> String
 rawFileNameForDate = formatTime defaultTimeLocale "%F"
 
 fileNameForReservation :: Reservation -> FilePath
-fileNameForReservation = (++ ".txt") . rawFileNameForDate . date
+fileNameForReservation = (<> ".txt") . rawFileNameForDate . date
 
-readReservationsFromDB :: ConnectionString -> ZonedTime -> IO [Reservation]
-readReservationsFromDB dir d =
+readReservationsFromDB :: (MonadReader Config m, MonadIO m) => ZonedTime -> m [Reservation]
+readReservationsFromDB d =
   -- Imagine that this queries a database table instead of reading from a file
   do
-    exists <- doesFileExist fileName
+    dir <- asks connStr
+    let fileName = dir </> rawFileNameForDate d <> ".txt"
+    exists <- liftIO (doesFileExist fileName)
     if exists
-      then read <$> readFile fileName
+      then read <$> liftIO (readFile fileName)
       else return []
-  where
-    fileName = dir </> rawFileNameForDate d ++ ".txt"
 
-getReservedSeatsFromDB :: ConnectionString -> ZonedTime -> IO Int
-getReservedSeatsFromDB dir d = do
-  reservations <- readReservationsFromDB dir d
+getReservedSeatsFromDB :: (MonadReader Config m, MonadIO m) => ZonedTime -> m Int
+getReservedSeatsFromDB d = do
+  reservations <- readReservationsFromDB d
   return (foldr ((+) . quantity) 0 reservations)
 
-saveReservation :: ConnectionString -> Reservation -> IO ()
-saveReservation dir r =
+saveReservation :: (MonadReader Config m, MonadIO m) => Reservation -> m ()
+saveReservation r =
   --Imagine that this inserts into a database table instead of writing to a file
   do
-    reservations <- readReservationsFromDB dir (date r)
+    dir <- asks connStr
+    reservations <- readReservationsFromDB (date r)
     -- Use of `seq` as described in http://stackoverflow.com/a/2530948/126014
-    length reservations `seq` writeFile fileName $ show (r : reservations)
-  where
-    fileName = dir </> fileNameForReservation r
+    let fileName = dir </> fileNameForReservation r
+    length reservations `seq` liftIO (writeFile fileName $ show (r : reservations))
 
 -- Caravan storage
 caravanPool :: [Caravan]
 caravanPool = map Caravan [4, 6, 8]
 
 fileNameForCaravan :: ZonedTime -> FilePath
-fileNameForCaravan = (++ ".caravan.txt") . rawFileNameForDate
+fileNameForCaravan = (<> ".caravan.txt") . rawFileNameForDate
 
 type ServiceAddress = String
 
-readReservedCaravans :: ServiceAddress -> ZonedTime -> IO [Caravan]
-readReservedCaravans dir d =
+readReservedCaravans :: (MonadReader Config m, MonadIO m) => ZonedTime -> m [Caravan]
+readReservedCaravans d =
   -- Imagine that this queries a web service instead of reading from a file
   do
-    exists <- doesFileExist fileName
+    dir <- asks svcAddr
+    let fileName = dir </> fileNameForCaravan d
+    exists <- liftIO (doesFileExist fileName)
     if exists
-      then read <$> readFile fileName
+      then read <$> liftIO (readFile fileName)
       else return []
-  where
-    fileName = dir </> fileNameForCaravan d
 
-findCaravan :: ServiceAddress -> Int -> ZonedTime -> IO (Maybe Caravan)
-findCaravan dir requestedCapacity d = do
-  putStrLn "Finding a caravan..."
-  reservedCaravans <- readReservedCaravans dir d
+findCaravan :: (MonadReader Config m, MonadIO m) => Int -> ZonedTime -> m (Maybe Caravan)
+findCaravan requestedCapacity d = do
+  liftIO (putStrLn "Finding a caravan...")
+  reservedCaravans <- readReservedCaravans d
   let availableCaravans = filter (`notElem` reservedCaravans) caravanPool
   return $ find (\c -> requestedCapacity <= caravanCapacity c) availableCaravans
 
-reserveCaravan :: ServiceAddress -> ZonedTime -> Caravan -> IO ()
-reserveCaravan dir d c =
+reserveCaravan :: (MonadReader Config m, MonadIO m) => ZonedTime -> Caravan -> m ()
+reserveCaravan d c =
   --Imagine that this updates a web service instead of writing to a file
   do
-    caravans <- readReservedCaravans dir d
+    dir <- asks svcAddr
+    let fileName = dir </> fileNameForCaravan d
+    caravans <- readReservedCaravans d
     -- Use of `seq` as described in http://stackoverflow.com/a/2530948/126014
-    length caravans `seq` writeFile fileName $ show (c : caravans)
-  where
-    fileName = dir </> fileNameForCaravan d
+    length caravans `seq` liftIO (writeFile fileName $ show (c : caravans))

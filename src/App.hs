@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module App
   ( postReservation,
   )
@@ -5,34 +7,31 @@ where
 
 import ApiModel
 import Control.Monad (forM_)
+import Control.Monad.Except (MonadError (..))
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.Trans (liftIO)
-import Control.Monad.Trans.Either
-  ( EitherT (..),
-    eitherT,
-    hoistEither,
-    right,
-  )
+import Control.Monad.Trans.Except (ExceptT (..), runExceptT)
 import DB
 
-connStr :: ConnectionString
-connStr = "."
+hoistEither :: (MonadError e m) => Either e a -> m a
+hoistEither = either throwError pure
 
-svcAddr :: ServiceAddress
-svcAddr = "."
-
+{-
 checkCaravan :: Reservation -> Error -> EitherT Error IO Reservation
 checkCaravan reservation err = do
-  c <- liftIO $ findCaravan svcAddr (quantity reservation) (date reservation)
+  c <- findCaravan svcAddr (quantity reservation) (date reservation)
   newRes <- hoistEither $ checkCaravanCapacityOnError err c reservation
-  liftIO $ forM_ c $ reserveCaravan svcAddr (date newRes)
+  forM_ c $ reserveCaravan svcAddr (date newRes)
   return newRes
+  -}
 
-postReservation :: ReservationRendition -> IO (HttpResult ())
+postReservation :: (MonadReader Config m, MonadIO m) => ReservationRendition -> m (HttpResult ())
 postReservation candidate =
   fmap toHttpResult
-    $ runEitherT
+    $ runExceptT
     $ do
       r <- hoistEither $ validateReservation candidate
-      i <- liftIO $ getReservedSeatsFromDB connStr $ date r
-      eitherT (checkCaravan r) right $ hoistEither $ checkCapacity 10 i r
-      >>= liftIO . saveReservation connStr
+      i <- getReservedSeatsFromDB $ date r
+      hoistEither $ checkCapacity 10 i r
+      >>= saveReservation
