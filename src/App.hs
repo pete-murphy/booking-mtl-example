@@ -13,6 +13,9 @@ import Control.Monad.IO.Class (MonadIO (..), liftIO)
 import Control.Monad.Reader (MonadReader (..), runReaderT)
 import DB
 
+config :: Config
+config = Config {connStr = ".", svcAddr = "."}
+
 hoistEither :: (MonadError e m) => Either e a -> m a
 hoistEither = either throwError pure
 
@@ -45,5 +48,5 @@ postReservation candidate =
         do hoistEither (checkCapacity 10 i r)
       saveReservation res
 
-config :: Config
-config = Config {connStr = ".", svcAddr = "."}
+postReservationIO :: ReservationRendition -> IO (HttpResult ())
+postReservationIO = runProduction config . postReservation

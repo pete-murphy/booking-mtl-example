@@ -1,12 +1,15 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeOperators #-}
 
 module DB
   ( Config (..),
     Operations (..),
     ServiceAddress,
+    runProduction,
+    Production,
   )
 where
 
@@ -14,6 +17,7 @@ import ApiModel
 import Control.Monad.Except (ExceptT (..), lift)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
+import Control.Natural (type (~>))
 import Data.List (find)
 import Data.Time
   ( FormatTime (..),
@@ -45,6 +49,9 @@ class Monad m => Operations m where
   readReservedCaravans :: ZonedTime -> m [Caravan]
 
 type Production = ReaderT Config IO
+
+runProduction :: Config -> Production ~> IO
+runProduction = flip runReaderT
 
 instance Operations Production where
   readReservations d =
