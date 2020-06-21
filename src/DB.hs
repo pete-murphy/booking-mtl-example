@@ -17,7 +17,7 @@ import ApiModel
 import Control.Monad.Except (ExceptT (..), lift)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
-import Control.Monad.State (State (..))
+import Control.Monad.State (State (..), gets, modify)
 import Control.Natural (type (~>))
 import Data.List (find)
 import qualified Data.Map as Map
@@ -29,6 +29,7 @@ import Data.Time
     formatTime,
   )
 import Data.Time.Clock (UTCTime (..))
+import Data.Time.LocalTime (zonedTimeToUTC)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
@@ -52,11 +53,6 @@ class Monad m => Operations m where
   reserveCaravan :: ZonedTime -> Caravan -> m ()
   readReservedCaravans :: ZonedTime -> m [Caravan]
 
-type Production = ReaderT Config IO
-
-runProduction :: Config -> Production ~> IO
-runProduction = flip runReaderT
-
 data TestState
   = TestState
       { reservations :: Map UTCTime [Reservation],
@@ -64,6 +60,26 @@ data TestState
       }
 
 type Test = State TestState
+
+instance Operations Test where
+  readReservations d = gets do Map.findWithDefault [] (zonedTimeToUTC d) . reservations
+  getReservedSeats d = do
+    reservations <- readReservations d
+    pure do foldr ((+) . quantity) 0 reservations
+
+  -- TODO: Nicer way of writing this (should I need lenses?)
+  saveReservation r = modify \s -> s {reservations = Map.insertWith (<>) (zonedTimeToUTC (date r)) [r] (reservations s)}
+  readReservedCaravans d = gets do Map.findWithDefault [] (zonedTimeToUTC d) . caravans
+  findCaravan requestedCapacity d = do
+    reservedCaravans <- readReservedCaravans d
+    let availableCaravans = filter (`notElem` reservedCaravans) caravanPool
+    pure do find (\c -> requestedCapacity <= caravanCapacity c) availableCaravans
+  reserveCaravan d c = modify \s -> s {caravans = Map.insertWith (<>) (zonedTimeToUTC d) [c] (caravans s)}
+
+type Production = ReaderT Config IO
+
+runProduction :: Config -> Production ~> IO
+runProduction = flip runReaderT
 
 instance Operations Production where
   readReservations d =
@@ -107,6 +123,7 @@ instance Operations Production where
       let fileName = dir </> fileNameForCaravan d
       caravans <- readReservedCaravans d
       -- Use of `seq` as described in http://stackoverflow.com/a/2530948/126014
+      -- TODO: Fugly :(
       length caravans `seq` liftIO (writeFile fileName $ show (c : caravans))
 
 -- newtype ExceptT e m a = ExceptT {runExceptT :: m (Either e a)}
@@ -117,14 +134,6 @@ instance Operations m => Operations (ExceptT e m) where
   findCaravan = fmap lift . findCaravan
   reserveCaravan = fmap lift . reserveCaravan
   readReservedCaravans = lift . readReservedCaravans
-
--- instance (Monad m, MonadReader Config m, MonadIO m) => Operations m where
---   readReservations = readReservationsFromDB
---   getReservedSeats = getReservedSeatsFromDB
---   saveReservation = saveReservationToDB
---   findCaravan = findCaravanFromSvc
---   reserveCaravan = reserveCaravanFromSvc
---   readReservedCaravans = readReservedCaravansFromSvc
 
 -- Caravan storage
 caravanPool :: [Caravan]
