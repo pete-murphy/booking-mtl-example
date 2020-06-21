@@ -9,7 +9,9 @@ module DB
     Operations (..),
     ServiceAddress,
     runProduction,
+    runTest,
     Production,
+    TestState (..),
   )
 where
 
@@ -17,7 +19,7 @@ import ApiModel
 import Control.Monad.Except (ExceptT (..), lift)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
-import Control.Monad.State (State (..), gets, modify)
+import Control.Monad.State (State (..), evalState, execState, gets, modify, runState)
 import Control.Natural (type (~>))
 import Data.List (find)
 import qualified Data.Map as Map
@@ -60,6 +62,9 @@ data TestState
       }
 
 type Test = State TestState
+
+runTest :: TestState -> Test a -> (a, TestState)
+runTest = flip runState
 
 instance Operations Test where
   readReservations d = gets do Map.findWithDefault [] (zonedTimeToUTC d) . reservations

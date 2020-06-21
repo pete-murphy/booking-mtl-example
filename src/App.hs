@@ -12,9 +12,13 @@ import Control.Monad.Except (ExceptT (..), MonadError (..), runExceptT)
 import Control.Monad.IO.Class (MonadIO (..), liftIO)
 import Control.Monad.Reader (MonadReader (..), runReaderT)
 import DB
+import qualified Data.Map as Map
 
 config :: Config
 config = Config {connStr = ".", svcAddr = "."}
+
+initialState :: TestState
+initialState = TestState {reservations = Map.empty, caravans = Map.empty}
 
 hoistEither :: (MonadError e m) => Either e a -> m a
 hoistEither = either throwError pure
@@ -50,3 +54,6 @@ postReservation candidate =
 
 postReservationIO :: ReservationRendition -> IO (HttpResult ())
 postReservationIO = runProduction config . postReservation
+
+postReservationTest :: ReservationRendition -> HttpResult ()
+postReservationTest = fst . runTest initialState . postReservation
