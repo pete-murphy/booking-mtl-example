@@ -17,14 +17,18 @@ import ApiModel
 import Control.Monad.Except (ExceptT (..), lift)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
+import Control.Monad.State (State (..))
 import Control.Natural (type (~>))
 import Data.List (find)
+import qualified Data.Map as Map
+import Data.Map (Map)
 import Data.Time
   ( FormatTime (..),
     ZonedTime (..),
     defaultTimeLocale,
     formatTime,
   )
+import Data.Time.Clock (UTCTime (..))
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
@@ -52,6 +56,14 @@ type Production = ReaderT Config IO
 
 runProduction :: Config -> Production ~> IO
 runProduction = flip runReaderT
+
+data TestState
+  = TestState
+      { reservations :: Map UTCTime [Reservation],
+        caravans :: Map UTCTime [Caravan]
+      }
+
+type Test = State TestState
 
 instance Operations Production where
   readReservations d =

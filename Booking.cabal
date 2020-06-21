@@ -24,3 +24,4 @@ library
                      , either
                      , transformers
                      , natural-transformation
+                     , containers
