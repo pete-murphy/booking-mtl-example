@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module DB
@@ -45,12 +46,12 @@ readReservationsFromDB d =
     exists <- liftIO (doesFileExist fileName)
     if exists
       then read <$> liftIO (readFile fileName)
-      else return []
+      else pure []
 
 getReservedSeatsFromDB :: (MonadReader Config m, MonadIO m) => ZonedTime -> m Int
 getReservedSeatsFromDB d = do
   reservations <- readReservationsFromDB d
-  return (foldr ((+) . quantity) 0 reservations)
+  pure do foldr ((+) . quantity) 0 reservations
 
 saveReservation :: (MonadReader Config m, MonadIO m) => Reservation -> m ()
 saveReservation r =
@@ -80,14 +81,14 @@ readReservedCaravans d =
     exists <- liftIO (doesFileExist fileName)
     if exists
       then read <$> liftIO (readFile fileName)
-      else return []
+      else pure []
 
 findCaravan :: (MonadReader Config m, MonadIO m) => Int -> ZonedTime -> m (Maybe Caravan)
 findCaravan requestedCapacity d = do
   liftIO (putStrLn "Finding a caravan...")
   reservedCaravans <- readReservedCaravans d
   let availableCaravans = filter (`notElem` reservedCaravans) caravanPool
-  return $ find (\c -> requestedCapacity <= caravanCapacity c) availableCaravans
+  pure do find (\c -> requestedCapacity <= caravanCapacity c) availableCaravans
 
 reserveCaravan :: (MonadReader Config m, MonadIO m) => ZonedTime -> Caravan -> m ()
 reserveCaravan d c =
