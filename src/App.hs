@@ -20,7 +20,7 @@ exceptT :: Monad m => (a -> m c) -> (b -> m c) -> ExceptT a m b -> m c
 exceptT f g = either f g <=< runExceptT
 
 checkCaravan ::
-  (MonadIO m, MonadReader Config m) =>
+  Operations m =>
   Reservation ->
   Error ->
   ExceptT Error m Reservation
@@ -31,14 +31,14 @@ checkCaravan reservation err = do
   pure newRes
 
 postReservation ::
-  (MonadReader Config m, MonadIO m) =>
+  Operations m =>
   ReservationRendition ->
   m (HttpResult ())
 postReservation candidate =
   toHttpResult
     <$> runExceptT do
       r <- hoistEither (validateReservation candidate)
-      i <- getReservedSeatsFromDB (date r)
+      i <- getReservedSeats (date r)
       res <- exceptT
         (checkCaravan r)
         pure
@@ -47,6 +47,3 @@ postReservation candidate =
 
 config :: Config
 config = Config {connStr = ".", svcAddr = "."}
-
-postReservationIO :: ReservationRendition -> IO (HttpResult ())
-postReservationIO rendition = runReaderT (postReservation rendition) config
